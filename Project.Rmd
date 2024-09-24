@@ -1,0 +1,235 @@
+---
+title: "Project"
+author: "LD"
+date: "2024-09-15"
+output: html_document
+---
+Loading Data
+```{r}
+library(readxl)
+data_pension_reforms <- read_excel("~/Finance and Business Project/data_pension_reforms.xlsx")
+data <- data_pension_reforms
+```
+Exploratory Data Analysis
+#Summary
+```{r}
+head(data)
+summary(data)
+str(data)
+```
+#Checking for Missing Values
+```{r}
+colSums(is.na(data))
+```
+#Imputing missing values using KNN
+```{r}
+library(VIM)
+library(dplyr)
+data_imputed <- kNN(data, k = 5, imp_var = FALSE)
+data_imputed <- data_imputed %>%
+  mutate_if(is.numeric, round)
+View(data_imputed)
+
+#Replace missing values with imputed data
+data_clean <- data  
+for (col_name in colnames(data)) {
+  missing_indices <- is.na(data[[col_name]])
+  data_clean[[col_name]][missing_indices] <- data_imputed[[col_name]][missing_indices]
+}
+colSums(is.na(data_clean))
+data <- data_clean
+
+```
+
+#Plots
+```{r}
+#Distribution of political systems across countries over the years
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Selecting relevant columns for political systems and year
+political_data <- data %>%
+  select(country, year, president_sys, assembly_sys, parliament_sys)
+
+long_political_data <- political_data %>%
+  gather(key = "political_system", value = "active", president_sys:parliament_sys) %>%
+  filter(active == 1) 
+
+ggplot(long_political_data, aes(x = year, y = country, fill = political_system)) +
+  geom_tile(color = "white", size = 0.1) +
+  scale_fill_manual(values = c("president_sys" = "pink", 
+                               "assembly_sys" = "palegreen", 
+                               "parliament_sys" = "skyblue")) +
+  labs(title = "Political Systems Across Countries Over the Years",
+       x = "Year", y = "Country", fill = "Political System") +
+  theme_minimal(base_size = 14) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "top")
+```
+```{r}
+# Load the libraries
+library(ggplot2)
+library(dplyr)
+
+# Summarize the frequency of reforms for each country
+country_reform_freq <- data %>%
+  group_by(country, year) %>%
+  summarise(
+    mandatory_reforms = sum(manlaw, na.rm = TRUE),
+    voluntary_reforms = sum(vollaw, na.rm = TRUE),
+    occupational_reforms = sum(occlaw, na.rm = TRUE)
+  ) %>%
+  tidyr::pivot_longer(cols = c(mandatory_reforms, voluntary_reforms, occupational_reforms), 
+                      names_to = "reform_type", values_to = "count")
+
+# Create a stacked bar plot
+ggplot(country_reform_freq, aes(x = country, y = count, fill = reform_type)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Frequency of Pension Reforms per Country", 
+       x = "Country", 
+       y = "Number of Reforms") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_fill_manual(values = c("mandatory_reforms" = "skyblue", "voluntary_reforms" = "palegreen", "occupational_reforms" = "pink"))
+```
+```{r}
+#Creating a new varibale called political system to categorise based on the political systems
+data <- data %>%
+  mutate(political_system = case_when(
+    president_sys == 1 ~ "Presidential",
+    parliament_sys == 1 ~ "Parliamentary",
+    assembly_sys == 1 ~ "Assembly",
+    TRUE ~ "Other"
+  ))
+# Summarizing the frequency of reforms for each political system
+political_system_reform <- data %>%
+  group_by(political_system) %>% # Assuming 'political_system' represents the system (parliamentary, presidential, assembly)
+  summarise(
+    mandatory_reforms = sum(manlaw, na.rm = TRUE),
+    voluntary_reforms = sum(vollaw, na.rm = TRUE),
+    occupational_reforms = sum(occlaw, na.rm = TRUE)
+  ) %>%
+  tidyr::pivot_longer(cols = c(mandatory_reforms, voluntary_reforms, occupational_reforms), 
+                      names_to = "reform_type", values_to = "count")
+
+# Create a grouped bar chart to compare reform frequencies by political system
+ggplot(political_system_reform, aes(x = political_system, y = count, fill = reform_type)) +
+  geom_bar(stat = "identity", position = "dodge") + # Position dodge to place bars side by side
+  theme_minimal() +
+  labs(title = "Frequency of Pension Reforms by Political System", 
+       x = "Political System", 
+       y = "Number of Reforms") +
+  scale_fill_manual(values = c("mandatory_reforms" = "skyblue", 
+                               "voluntary_reforms" = "palegreen", 
+                               "occupational_reforms" = "pink"),
+                    name = "Reform Type") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+```{r}
+install.packages("e1071")
+
+library(dplyr)
+library(e1071)
+
+# Initialize a dataframe to store descriptive statistics
+desc_stats <- data.frame(
+  Variable = character(),
+  Mean = numeric(),
+  Skewness = numeric(),
+  Variance = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop over each numeric column to calculate mean, skewness, and variance
+for (col in colnames(data)) {
+  if (is.numeric(data[[col]])) {
+    mean_val <- mean(data[[col]], na.rm = TRUE)
+    skewness_val <- skewness(data[[col]], na.rm = TRUE)
+    variance_val <- var(data[[col]], na.rm = TRUE)
+    
+    # Append the results to the desc_stats dataframe
+    desc_stats <- rbind(desc_stats, data.frame(
+      Variable = col,
+      Mean = mean_val,
+      Skewness = skewness_val,
+      Variance = variance_val
+    ))
+  }
+}
+
+# Print the descriptive statistics
+print(desc_stats)
+```
+
+
+```{r}
+# Correlation matrix for fractionalization and political institution variables
+library(corrplot)
+frac_vars <- data %>% select(fracmand, fracvol, govfrac, oppfrac, liec, eiec, president_sys, assembly_sys, parliament_sys)
+cor_matrix <- cor(frac_vars, use = "pairwise.complete.obs")
+corrplot(cor_matrix, method = "color",  addCoef.col = "black", tl.cex = 0.8,mar = c(0, 0, 3, 0), tl.srt = 45,number.cex = 0.5, title = "Correlation Matrix of Political and Fractionalization Variables")
+
+```
+```{r}
+# Correlation matrix for Macro-economic variables
+library(corrplot)
+eco_vars <- data %>% select(savings, ck_current, ln_gdp, ln_rkna_pc, ctfp, labshare, inflation, openness, gdp_p_c, xr, c_sh, i_sh, g_sh, x_sh, im_sh, openness, urban, avh, hc, gini)
+cor_matrix <- cor(eco_vars, use = "pairwise.complete.obs")
+corrplot(cor_matrix, method = "color",  addCoef.col = "black", tl.cex = 0.8,mar = c(0, 0, 3, 0), tl.srt = 45,number.cex = 0.5, title = "Correlation Matrix of Macro-Economic Variables")
+
+```
+
+Model
+#INS Variable - Political Variables
+```{r}
+# INS for Mandatory Laws
+INS_man <- data %>%
+  select(president_manlaw, parliament_manlaw, finite_manlaw, multpl_manlaw, prtyin_manlaw, 
+         center_manlaw, allhouse_manlaw, govfrac_manlaw, oppfrac_manlaw, herfgov_manlaw, 
+         herfopp_manlaw, liec_manlaw, eiec_manlaw, pr_manlaw, dhondt_manlaw, auton_manlaw, 
+         muni_manlaw, author_manlaw, stconst_manlaw, tensys_strict_manlaw, tenlong_strict_manlaw)
+
+# INS for Occupational Laws
+INS_occ <- data %>%
+  select(president_occlaw, parliament_occlaw, finite_occlaw, multpl_occlaw, prtyin_occlaw, 
+         center_occlaw, allhouse_occlaw, govfrac_occlaw, oppfrac_occlaw, herfgov_occlaw, 
+         herfopp_occlaw, liec_occlaw, eiec_occlaw, pr_occlaw, dhondt_occlaw, auton_occlaw, 
+         muni_occlaw, author_occlaw, stconst_occlaw, tensys_strict_occlaw, tenlong_strict_occlaw)
+
+# INS for Voluntary Laws
+INS_vol <- data %>%
+  select(president_vollaw, parliament_vollaw, finite_vollaw, multpl_vollaw, prtyin_vollaw, 
+         center_vollaw, allhouse_vollaw, govfrac_vollaw, oppfrac_vollaw, herfgov_vollaw, 
+         herfopp_vollaw, liec_vollaw, eiec_vollaw, pr_vollaw, dhondt_vollaw, auton_vollaw, 
+         muni_vollaw, author_vollaw, stconst_vollaw, tensys_strict_vollaw)
+
+
+```
+
+#X Variable - Macro Economic Variables
+```{r}
+X <- data %>%
+  select(savings, ck_current, ln_gdp, ln_rkna_pc, ctfp, labshare, inflation, openness, gdp_p_c, xr, c_sh, i_sh, g_sh, x_sh, im_sh, openness, urban, avh, hc, gini)
+```
+
+#Z variable - Demographic Variables
+```{r}
+Z <- data %>%
+  select(agedep, oldage, youthage, fertility, life, popgrowth, life65, urban)
+```
+
+
+#Model 1 - Mandatory Reforms
+```{r}
+model_man <- glm(manlaw ~ president_manlaw, parliament_manlaw, finite_manlaw, multpl_manlaw, prtyin_manlaw, center_manlaw, allhouse_manlaw, govfrac_manlaw, oppfrac_manlaw, herfgov_manlaw, 
+         herfopp_manlaw, liec_manlaw, eiec_manlaw, pr_manlaw, dhondt_manlaw, auton_manlaw, 
+         muni_manlaw, author_manlaw, stconst_manlaw, tensys_strict_manlaw, tenlong_strict_manlaw,savings, ck_current, ln_gdp, ln_rkna_pc, ctfp, labshare, inflation, openness, gdp_p_c, xr, c_sh, i_sh, g_sh, x_sh, im_sh, openness, urban, avh, hc, gini, agedep, oldage, youthage, fertility, life, popgrowth, life65, urban, data = data, family = binomial)
+
+colnames(data)
+
+```
+
